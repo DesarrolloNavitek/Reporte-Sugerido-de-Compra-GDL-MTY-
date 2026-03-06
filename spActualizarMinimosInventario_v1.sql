@@ -1,5 +1,5 @@
 SET NOCOUNT ON;
---EXEC spActualizarMinimosInventario 45
+--EXEC spActualizarMinimosInventario 30
 IF EXISTS (SELECT 1 FROM SYS.objects WHERE NAME ='spActualizarMinimosInventario')
 DROP PROC dbo.spActualizarMinimosInventario
 GO
@@ -14,8 +14,8 @@ BEGIN
 
 	SET @FechaD = DATEADD(MONTH, -3, @FechaA)
 
-	IF COALESCE(@FDemandaProm,0) = 0 
-	SET @FDemandaProm = 15
+	IF COALESCE(@FDemandaProm,0) <= 30 
+	SET @FDemandaProm = 30
 
 
     ;WITH UniversoArticulos AS (SELECT 
@@ -30,65 +30,44 @@ BEGIN
     WHERE vt.Almacen IN ('10','15') 
       AND vt.FechaEmision BETWEEN @FechaD AND @FechaA
     GROUP BY vt.Articulo, vt.Almacen
-	),Consumos AS (
-			SELECT	a.Articulo,
-					a.Almacen,
-					Demanda90, 
-					Pedido
-			FROM UniversoArticulos		a
-			LEFT JOIN ArtDisponible		b on a.Articulo=b.Articulo and a.Almacen=b.Almacen
-			WHERE Demanda90 > 0 
-			UNION 
-			ALL
-			SELECT	a.articulo,
-					a.Almacen,
-					Demanda90, 
-					Pedido
-			FROM UniversoArticulos		a
-			LEFT JOIN ArtDisponible			b on a.Articulo=b.Articulo and a.Almacen=b.Almacen
-			WHERE Pedido > 0 
-			GROUP BY  
-			a.articulo,
-			a.Almacen,	Demanda90, 
-			Pedido
-	), Totales AS (
-	SELECT  a.Almacen,
-			a.Articulo,
-			d.Descripcion1,
-			d.Unidad,
-			COALESCE(Demanda90,0)		AS DEMANDA90,
-			COALESCE(Pedido,0)			AS PEDIDO,
-			Disponible,
-			c.Factor
-
-	FROM ArtDisponible			a
-	LEFT JOIN Consumos			b	ON a.Articulo = b.Articulo AND a.Almacen=b.Almacen
-	JOIN ArtUnidad			c	ON a.Articulo = c.Articulo
-	JOIN Art				d	ON a.Articulo = d.Articulo
-   WHERE a.Almacen IN ('10','15')
-     AND c.Unidad = 'CJA-CAJA'
-	 AND Disponible > 0
+	),Totales AS (
+SELECT 
+    a.Almacen,
+    a.Articulo,
+    d.Descripcion1,
+    d.Unidad,
+    COALESCE(b.Demanda90, 0) AS DEMANDA90,
+    COALESCE(b.Pedido, 0) AS PEDIDO,
+    a.Disponible,
+    c.Factor
+FROM ArtDisponible a                    
+LEFT JOIN UniversoArticulos b ON a.Articulo = b.Articulo AND a.Almacen = b.Almacen
+JOIN ArtUnidad c ON a.Articulo = c.Articulo
+JOIN Art d ON a.Articulo = d.Articulo
+WHERE a.Almacen IN ('10','15')
+  AND c.Unidad = 'CJA-CAJA'
+  AND a.Disponible > 0.00
 )
 
-
-SELECT  ALMACEN,
-		Articulo										AS ARTICULO,
-		Descripcion1									AS DESCRIPCION,
-		Unidad											AS UNIDAD,
-		ROUND(DEMANDA90,4)								AS DEMANDA90,
-		ROUND((DEMANDA90 / 90),4)						AS DEMADIAPROM,
-		ROUND((DEMANDA90 * @FDemandaProm),4)			AS DEMANDAPROM, --variable
-		ROUND(PEDIDO,4)									AS PEDIDO,
-		ROUND(((DEMANDA90 * @FDemandaProm)+PEDIDO),4)	AS MINIMO,
-		ROUND(Disponible,4)								AS EXISTENCIA,
-		ROUND((((DEMANDA90 * @FDemandaProm)+PEDIDO) - Disponible),4)		AS SUGERIDO,
-		Factor											AS PZACAJA,
-		CASE WHEN (((DEMANDA90 * @FDemandaProm)+PEDIDO) - Disponible) < 0.00 THEN 0 ELSE ROUND(((((DEMANDA90 * @FDemandaProm)+PEDIDO) - Disponible) / Factor),4) END AS SUGREDON,
-		@FDemandaProm									AS FACTORDEMANDAPROMEDIO
+SELECT  Almacen,
+		Articulo,
+		Descripcion1									AS DDescripcion,
+		Unidad,
+		ROUND(DEMANDA90,4)								AS Demanda90,
+		ROUND((DEMANDA90 / 90),4)						AS DemandaDiaPromedio,
+		ROUND((DEMANDA90 * @FDemandaProm),4)			AS DemandaPromedio, --variable
+		ROUND(PEDIDO,4)									AS Pedido,
+		ROUND(((DEMANDA90 * @FDemandaProm)+PEDIDO),4)	AS Minimo,
+		ROUND(Disponible,4)								AS Existencia,
+		ROUND((((DEMANDA90 * @FDemandaProm)+PEDIDO) - Disponible),4)		AS Sugerido,
+		Factor											AS PzaCaja,
+		CASE WHEN (((DEMANDA90 * @FDemandaProm)+PEDIDO) - Disponible) < 0.00 THEN 0 ELSE CEILING ( ((((DEMANDA90 * @FDemandaProm)+PEDIDO) - Disponible) / Factor) / Factor ) END AS SugRedon
+		--,
+		--@FDemandaProm									AS FACTORDEMANDAPROMEDIO
 		
   FROM Totales
+  --WHERE Almacen = '15'
  ORDER BY 1,5 DESC
-
+--EXEC spActualizarMinimosInventario 40
 END
-
-
+GO
