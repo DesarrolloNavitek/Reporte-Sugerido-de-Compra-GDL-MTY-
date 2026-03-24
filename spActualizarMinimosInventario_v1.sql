@@ -1,5 +1,12 @@
-SET NOCOUNT ON;
---EXEC spActualizarMinimosInventario 30
+SET DATEFIRST 7
+SET ANSI_NULLS OFF
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+SET LOCK_TIMEOUT -1
+SET QUOTED_IDENTIFIER OFF
+GO
+/******/
+--SET NOCOUNT ON;
+--EXEC spActualizarMinimosInventario '10',30
 IF EXISTS (SELECT 1 FROM SYS.objects WHERE NAME ='spActualizarMinimosInventario')
 DROP PROC dbo.spActualizarMinimosInventario
 GO
@@ -50,7 +57,8 @@ JOIN Art d ON a.Articulo = d.Articulo
 WHERE a.Almacen = @Almacen --IN ('10','15')
   AND c.Unidad = 'CJA-CAJA'
   AND d.Linea = '1-PT'
-  AND a.Disponible > 0.0000
+  AND a.Disponible >= 0.0000
+  AND d.Articulo NOT LIKE 'ESP%'
 ), DemandaDiaPromedio AS (
 --Calcula la demanda promedio por día
 SELECT  Almacen,
@@ -127,6 +135,6 @@ SELECT a.Almacen,
 		Sugerido,
 		Factor,
 		SugRedon
-ORDER BY 1,5 DESC
---EXEC spActualizarMinimosInventario 30,'15'
+ORDER BY 5 DESC
+--EXEC spActualizarMinimosInventario '10',30
 END
